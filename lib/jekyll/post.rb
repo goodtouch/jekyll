@@ -12,10 +12,8 @@ module Jekyll
       dir
       date
       id
-      categories
       next
       previous
-      tags
       path
     ]
 
@@ -35,7 +33,7 @@ module Jekyll
 
     attr_accessor :site
     attr_accessor :data, :extracted_excerpt, :content, :output, :ext
-    attr_accessor :date, :slug, :tags, :categories
+    attr_accessor :date, :slug, :classifications
 
     attr_reader :name
 
@@ -52,7 +50,10 @@ module Jekyll
       @base = containing_dir(source, dir)
       @name = name
 
-      self.categories = dir.downcase.split('/').reject { |x| x.empty? }
+      self.classifications = {}
+      # FIXME: Move next line into populate_classifications if possible
+      self.classifications["categories"]= dir.downcase.split('/').reject { |x| x.empty? }
+
       process(name)
       read_yaml(@base, name)
 
@@ -60,19 +61,47 @@ module Jekyll
         self.date = Time.parse(data["date"].to_s)
       end
 
-      populate_categories
-      populate_tags
+      populate_classifications
     end
 
+    # FIXME: Extracted those ones from populate_classifications so that tests using Post.allocate would work
+    # (Not running initializer => don't initialize classification and don't eval custom accessors.
+    def categories=(c)
+      @classifications ||= {}
+      @classifications['categories'] = c
+    end
+
+    def categories
+      @classifications ||= {}
+      @classifications['categories']
+    end
+
+    # FIXME: merge with populate_classifications?
     def populate_categories
-      if categories.empty?
-        self.categories = Utils.pluralized_array_from_hash(data, 'category', 'categories').map {|c| c.to_s.downcase}
+      if classifications["categories"].empty?
+        classifications["categories"] = Utils.pluralized_array_from_hash(data, 'category', 'categories').map {|c| c.to_s.downcase}
       end
-      categories.flatten!
+      classifications["categories"].flatten!
     end
 
-    def populate_tags
-      self.tags = Utils.pluralized_array_from_hash(data, "tag", "tags").flatten
+    def populate_classifications
+      populate_categories
+      @site.classifications.keys.each do |classification|
+        next if classification == 'categories'
+        value = Utils.pluralized_array_from_hash(data, ActiveSupport::Inflector.singularize(classification), classification).flatten
+        classifications[classification] = value
+
+        # Define first-class methods for classifications.
+        # FIXME: Check if method already exists before
+        self.class.module_eval <<-RUBY, __FILE__, __LINE__ + 1
+          def #{classification}=(value)
+            classifications['#{classification}'] = value
+          end
+          def #{classification}
+            classifications['#{classification}']
+          end
+        RUBY
+      end
     end
 
     # Get the full path to the directory containing the post files
@@ -263,6 +292,13 @@ module Jekyll
       path = Jekyll.sanitized_path(dest, URL.unescape_path(url))
       path = File.join(path, "index.html") if path[/\.html$/].nil?
       path
+    end
+
+    # Convert this post into a Hash for use in Liquid templates.
+    #
+    # Returns the representative Hash.
+    def to_liquid(attrs = nil)
+      Utils.deep_merge_hashes(super(attrs), @classifications)
     end
 
     # Returns the shorthand String identifier of this Post.
