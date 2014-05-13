@@ -512,7 +512,7 @@ class TestPost < Test::Unit::TestCase
 
       should "recognize custom project classification in yaml" do
         post = setup_post("2013-05-28-classifications.md")
-        assert post.projects.include?('bartender')
+        assert post.classifications['projects'].include?('bartender')
       end
 
       context "rendering" do
