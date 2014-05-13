@@ -99,7 +99,6 @@ module Jekyll
       end
     end
 
-    # FIXME: complete doc
     # The list of classifications and their corresponding Jekyll::Post instances.
     #
     # Returns a Hash containing classifications name-to-posts pairs.
@@ -111,10 +110,10 @@ module Jekyll
         @classifications |= (config['classifications'] || []).reject { |c| c !~ /\A[a-z][a-zA-Z_-]*\z/ || FORBIDDEN_CLASSIFICATIONS.include?(c) }
         # FIXME: Define instance methods (maybe we can avoid this: statically define tags & categories and use hash for the rest?)
         # But should check if we can still easily filter (liquid) through hash first
-        @classifications.each do |classification|
-          self.class.module_eval %{def #{classification}; post_attr_hash('#{classification}'); end}, __FILE__, __LINE__
-          # => def categories; post_attr_hash('categories'); end
-        end
+        #@classifications.each do |classification|
+        #  self.class.module_eval %{def #{classification}; post_attr_hash('#{classification}'); end}, __FILE__, __LINE__
+        #  # => def categories; post_attr_hash('categories'); end
+        #end
       end
       Hash[@classifications.map { |classification| [classification, post_attr_hash(classification)]} ]
     end
@@ -291,7 +290,13 @@ module Jekyll
       # Build a hash map based on the specified post attribute ( post attr =>
       # array of posts ) then sort each array in reverse order.
       hash = Hash.new { |h, key| h[key] = [] }
-      posts.each { |p| p.send(post_attr.to_sym).each { |t| hash[t] << p } }
+      posts.each do |p|
+        if p.classifications.keys.include?(post_attr) && !p.respond_to?(post_attr.to_sym)
+          p.classifications[post_attr].each { |t| hash[t] << p }
+        else
+          p.send(post_attr.to_sym).each { |t| hash[t] << p }
+        end
+      end
       hash.values.each { |posts| posts.sort!.reverse! }
       hash
     end
@@ -321,6 +326,7 @@ module Jekyll
     #                         and then title.
     #   "pages"             - The Array of all Pages.
     #   "html_pages"        - The Array of HTML Pages.
+    #   "classifications"   - The Hash of classification names and Hash of classification values and Posts.
     #   "categories"        - The Hash of category values and Posts.
     #                         See Site#post_attr_hash for type info.
     #   "tags"              - The Hash of tag values and Posts.
@@ -332,12 +338,13 @@ module Jekyll
        "site"   => Utils.deep_merge_hashes(config,
          Utils.deep_merge_hashes(collections,
           Utils.deep_merge_hashes(classifications, {
-            "time"         => time,
-            "posts"        => posts.sort { |a, b| b <=> a },
-            "pages"        => pages,
-            "static_files" => static_files.sort { |a, b| a.relative_path <=> b.relative_path },
-            "html_pages"   => pages.reject { |page| !page.html? },
-            "data"         => site_data
+            "time"            => time,
+            "posts"           => posts.sort { |a, b| b <=> a },
+            "pages"           => pages,
+            "static_files"    => static_files.sort { |a, b| a.relative_path <=> b.relative_path },
+            "html_pages"      => pages.reject { |page| !page.html? },
+            "classifications" => classifications,
+            "data"            => site_data
         })))
       }
     end

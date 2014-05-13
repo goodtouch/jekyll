@@ -15,6 +15,7 @@ module Jekyll
       next
       previous
       path
+      classifications
     ]
 
     # Attributes for Liquid templates
@@ -50,9 +51,7 @@ module Jekyll
       @base = containing_dir(source, dir)
       @name = name
 
-      self.classifications = {}
-      # FIXME: Move next line into populate_classifications if possible
-      self.classifications["categories"]= dir.downcase.split('/').reject { |x| x.empty? }
+      self.classifications = {'categories' => dir.downcase.split('/').reject { |x| x.empty? }}
 
       process(name)
       read_yaml(@base, name)
@@ -64,8 +63,7 @@ module Jekyll
       populate_classifications
     end
 
-    # FIXME: Extracted those ones from populate_classifications so that tests using Post.allocate would work
-    # (Not running initializer => don't initialize classification and don't eval custom accessors.
+    # Delegate accessors to @classifications for backward compatibility
     def categories=(c)
       @classifications ||= {}
       @classifications['categories'] = c
@@ -76,31 +74,41 @@ module Jekyll
       @classifications['categories']
     end
 
-    # FIXME: merge with populate_classifications?
-    def populate_categories
-      if classifications["categories"].empty?
-        classifications["categories"] = Utils.pluralized_array_from_hash(data, 'category', 'categories').map {|c| c.to_s.downcase}
-      end
-      classifications["categories"].flatten!
+    def tags=(t)
+      @classifications ||= {}
+      @classifications['tags'] = t
+    end
+
+    def tags
+      @classifications ||= {}
+      @classifications['tags']
     end
 
     def populate_classifications
-      populate_categories
       @site.classifications.keys.each do |classification|
-        next if classification == 'categories'
-        value = Utils.pluralized_array_from_hash(data, ActiveSupport::Inflector.singularize(classification), classification).flatten
-        classifications[classification] = value
+        value = Utils.pluralized_array_from_hash(data, ActiveSupport::Inflector.singularize(classification), classification)
+
+        if classification == 'categories'
+          value = self.categories.empty? ? value.map { |c| c.to_s.downcase } : self.categories
+        end
+
+        classifications[classification] = value.flatten
 
         # Define first-class methods for classifications.
-        # FIXME: Check if method already exists before
-        self.class.module_eval <<-RUBY, __FILE__, __LINE__ + 1
-          def #{classification}=(value)
-            classifications['#{classification}'] = value
-          end
-          def #{classification}
-            classifications['#{classification}']
-          end
-        RUBY
+        # unless self.respond_to?("#{classification}=")
+        #   self.class.module_eval <<-RUBY, __FILE__, __LINE__ + 1
+        #     def #{classification}=(value)
+        #       classifications['#{classification}'] = value
+        #     end
+        #   RUBY
+        # end
+        # unless self.respond_to?(classification)
+        #   self.class.module_eval <<-RUBY, __FILE__, __LINE__ + 1
+        #     def #{classification}
+        #       classifications['#{classification}']
+        #     end
+        #   RUBY
+        # end
       end
     end
 
